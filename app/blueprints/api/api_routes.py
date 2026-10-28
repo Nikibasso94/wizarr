@@ -559,7 +559,7 @@ class UserExtendResource(Resource):
                 )
 
             user.expires = new_expiry
-            user.expiry_reminder_sent_at = None
+            user.expiry_reminders_sent = None
             db.session.commit()
 
             return {
@@ -614,7 +614,7 @@ class UserUpdateExpiryResource(Resource):
 
             # Update the user's expiry
             user.expires = new_expiry
-            user.expiry_reminder_sent_at = None
+            user.expiry_reminders_sent = None
             db.session.commit()
 
             # Prepare response message

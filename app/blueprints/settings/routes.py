@@ -463,6 +463,7 @@ def smtp_settings():
     """SMTP configuration page."""
     from app.forms.smtp import SMTPSettingsForm, SMTPTestEmailForm
     from app.models import SMTPConfiguration
+    from app.services.expiry import parse_reminder_schedule
     from app.services.ldap.encryption import encrypt_credential
 
     config = SMTPConfiguration.query.first()
@@ -486,7 +487,9 @@ def smtp_settings():
 
         config.from_email = form.from_email.data
         config.from_name = form.from_name.data or None
-        config.reminder_days_before = form.reminder_days_before.data
+        config.reminder_schedule = ",".join(
+            str(d) for d in parse_reminder_schedule(form.reminder_schedule.data)
+        )
 
         db.session.commit()
         flash(_("SMTP configuration saved successfully"), "success")
@@ -502,7 +505,7 @@ def smtp_settings():
         form.username.data = config.username
         form.from_email.data = config.from_email
         form.from_name.data = config.from_name
-        form.reminder_days_before.data = config.reminder_days_before
+        form.reminder_schedule.data = config.reminder_schedule
         # password field intentionally left blank on GET
 
     return render_template(
