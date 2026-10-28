@@ -154,6 +154,13 @@
                 class="text-white bg-secondary hover:bg-secondary_hover focus:ring-4 focus:outline-none focus:ring-secondary_hover font-medium rounded-lg text-sm px-3 py-2">
           {{ _("Unlink") }}
         </button>
+        <button hx-get="/users/email-modal"
+                hx-include=".link-check:checked"
+                hx-target="#modal-user"
+                hx-swap="innerHTML"
+                class="text-white bg-primary hover:bg-primary_hover focus:ring-4 focus:outline-none focus:ring-primary_hover font-medium rounded-lg text-sm px-3 py-2">
+          {{ _("Email") }}
+        </button>
         <button hx-post="/users/bulk-delete"
                 hx-include=".link-check:checked"
                 hx-swap="none"

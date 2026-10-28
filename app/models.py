@@ -1229,6 +1229,30 @@ class SMTPConfiguration(db.Model):
     )
 
 
+class EmailTemplate(db.Model):
+    """Admin-authored, reusable subject/body pair for the bulk custom email
+    feature. `body` is raw Markdown and is rendered to HTML on demand at
+    send time, not cached, so editing a template never leaves a stale copy.
+    """
+
+    __tablename__ = "email_template"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String, nullable=False, unique=True)
+    subject = db.Column(db.String, nullable=False)
+    body = db.Column(db.Text, nullable=False)
+
+    created_at = db.Column(
+        db.DateTime, default=lambda: datetime.now(UTC), nullable=False
+    )
+    updated_at = db.Column(
+        db.DateTime,
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+
+
 class LDAPGroup(db.Model):
     """LDAP groups available for invitation assignment."""
 

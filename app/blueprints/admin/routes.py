@@ -22,6 +22,7 @@ from sqlalchemy.orm.attributes import set_committed_value
 from app.extensions import db, limiter
 from app.jinja_filters import local_to_utc
 from app.models import (
+    EmailTemplate,
     ExpiredUser,
     Invitation,
     LDAPConfiguration,
@@ -1061,6 +1062,95 @@ def bulk_delete_users():
     response = Response("")
     response.headers["HX-Trigger"] = "refreshUserTable"
     return response
+
+
+@admin_bp.get("/users/email-modal")
+@login_required
+def email_users_modal():
+    """Open the bulk 'send a custom email' modal for the selected users."""
+    uids = [uid for uid in request.args.getlist("uids") if uid.isdigit()]
+    if not uids:
+        return Response("No users selected", status=400)
+
+    users = User.query.filter(User.id.in_(uids)).all()
+    templates = EmailTemplate.query.order_by(EmailTemplate.name).all()
+
+    template_id = request.args.get("template_id", type=int)
+    selected = db.session.get(EmailTemplate, template_id) if template_id else None
+
+    return render_template(
+        "_partials/email_users_modal.html",
+        uids=uids,
+        users=users,
+        templates=templates,
+        subject=selected.subject if selected else "",
+        body=selected.body if selected else "",
+    )
+
+
+@admin_bp.get("/users/email-templates/<int:template_id>")
+@login_required
+def load_email_template(template_id: int):
+    """Return the subject/body fields for a saved template (HTMX swap)."""
+    tmpl = db.get_or_404(EmailTemplate, template_id)
+    return render_template(
+        "_partials/email_compose_fields.html", subject=tmpl.subject, body=tmpl.body
+    )
+
+
+@admin_bp.post("/users/send-email")
+@login_required
+def send_users_email():
+    """Send a custom email to the selected users, with optional save-as-template."""
+    uids = [uid for uid in request.form.getlist("uids") if uid.isdigit()]
+    subject = (request.form.get("subject") or "").strip()
+    body = (request.form.get("body") or "").strip()
+
+    if not uids or not subject or not body:
+        return render_template(
+            "_partials/ldap_alert.html",
+            level="error",
+            message=_("Select at least one recipient and fill in subject and body."),
+        ), 400
+
+    if (
+        request.form.get("save_as_template")
+        and request.form.get("template_name", "").strip()
+    ):
+        name = request.form["template_name"].strip()
+        existing = EmailTemplate.query.filter_by(name=name).first()
+        if existing:
+            existing.subject = subject
+            existing.body = body
+        else:
+            db.session.add(EmailTemplate(name=name, subject=subject, body=body))
+        db.session.commit()
+
+    from app.services.custom_email import render_custom_email
+    from app.services.email import EmailSendError, send_email
+    from app.services.user_email import current_email
+
+    users = User.query.filter(User.id.in_(uids)).all()
+
+    # An identity can have several linked accounts (one card each in the
+    # user list) that resolve to the same real address - send once per
+    # unique address, not once per selected row.
+    seen_emails: set[str] = set()
+    sent: list[str] = []
+    failed: list[tuple[str, str]] = []
+    for user in users:
+        to_email = current_email(user)
+        if not to_email or to_email.lower() in seen_emails:
+            continue
+        seen_emails.add(to_email.lower())
+        try:
+            rendered_subject, html, text = render_custom_email(subject, body, user)
+            send_email(to_email, rendered_subject, html, text)
+            sent.append(to_email)
+        except EmailSendError as exc:
+            failed.append((to_email, str(exc)))
+
+    return render_template("_partials/email_send_result.html", sent=sent, failed=failed)
 
 
 @admin_bp.post("/users/<int:user_id>/remove-from-server/<int:server_id>")
