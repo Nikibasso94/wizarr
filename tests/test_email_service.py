@@ -5,9 +5,18 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.models import SMTPConfiguration
-from app.services.email import EmailSendError, send_email
+from app.models import SMTPConfiguration, User
+from app.services.email import EmailSendError, send_email, send_expiry_reminder_email
 from app.services.ldap.encryption import encrypt_credential
+
+
+def _user(session, *, username="alice", email="alice@example.com"):
+    user = User(
+        token=f"tok-{id(object())}", username=username, email=email, code="CODE"
+    )
+    session.add(user)
+    session.commit()
+    return user
 
 
 @pytest.fixture(autouse=True)
@@ -102,3 +111,52 @@ def test_send_email_wraps_smtp_exceptions(smtp_config):
 
         with pytest.raises(EmailSendError):
             send_email("to@example.com", "Subject", "<p>Hi</p>")
+
+
+# ─── send_expiry_reminder_email: custom content override ───────────────────
+
+
+def test_reminder_uses_default_copy_when_no_config(session):
+    user = _user(session)
+
+    with pytest.raises(EmailSendError):
+        send_expiry_reminder_email(user, 3)
+
+
+def test_reminder_uses_default_copy_when_custom_fields_blank(smtp_config, session):
+    user = _user(session, username="bob", email="bob@example.com")
+
+    with patch("app.services.email.send_email") as send:
+        send_expiry_reminder_email(user, 3)
+
+    args = send.call_args.args
+    assert args[0] == "bob@example.com"
+    assert args[1] == "Your access is expiring soon"
+
+
+def test_reminder_uses_custom_content_when_both_fields_set(smtp_config, session):
+    smtp_config.reminder_subject = "Hi {{username}}, {{days_left}} days left"
+    smtp_config.reminder_body = "Dear {{username}}, renew at {{email}}."
+    session.commit()
+    user = _user(session, username="carol", email="carol@example.com")
+
+    with patch("app.services.email.send_email") as send:
+        send_expiry_reminder_email(user, 5)
+
+    args = send.call_args.args
+    assert args[0] == "carol@example.com"
+    assert args[1] == "Hi carol, 5 days left"
+    assert "Dear carol" in args[2]  # html body
+    assert "carol@example.com" in args[2]
+
+
+def test_reminder_falls_back_when_only_subject_is_set(smtp_config, session):
+    smtp_config.reminder_subject = "Custom subject"
+    smtp_config.reminder_body = None
+    session.commit()
+    user = _user(session)
+
+    with patch("app.services.email.send_email") as send:
+        send_expiry_reminder_email(user, 2)
+
+    assert send.call_args.args[1] == "Your access is expiring soon"

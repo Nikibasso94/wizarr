@@ -126,6 +126,21 @@
                 </p>
                 {% for err in form.reminder_schedule.errors %}<p class="text-red-500 text-sm mt-1">{{ err }}</p>{% endfor %}
               </div>
+              <div>
+                {{ form.reminder_subject.label(class="block mb-2 text-sm font-medium text-gray-900 dark:text-white") }}
+                {{ form.reminder_subject(class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white", placeholder=_("Your access is expiring soon")) }}
+                {% for err in form.reminder_subject.errors %}<p class="text-red-500 text-sm mt-1">{{ err }}</p>{% endfor %}
+              </div>
+              <div>
+                {{ form.reminder_body.label(class="block mb-2 text-sm font-medium text-gray-900 dark:text-white") }}
+                {{ form.reminder_body(rows="6", class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white") }}
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  {{ _("Markdown supported. Use") }}
+                  <code>{{ "{{ username }}" }}</code>, <code>{{ "{{ email }}" }}</code>, {{ _("and") }} <code>{{ "{{ days_left }}" }}</code>
+                  {{ _("to personalize it. Leave subject and message both blank to use the default text.") }}
+                </p>
+                {% for err in form.reminder_body.errors %}<p class="text-red-500 text-sm mt-1">{{ err }}</p>{% endfor %}
+              </div>
             </div>
             {# ───── Submit ───────────────────────────────────────── #}
             <div class="pt-6 border-t border-gray-200 dark:border-gray-700">

@@ -8,6 +8,7 @@ from wtforms import (
     PasswordField,
     SelectField,
     StringField,
+    TextAreaField,
 )
 from wtforms.validators import (
     DataRequired,
@@ -76,6 +77,12 @@ class SMTPSettingsForm(FlaskForm):
         default="3",
         validators=[Optional(), _valid_reminder_schedule],
         render_kw={"placeholder": "7,3,1"},
+    )
+    reminder_subject = StringField(
+        _l("Custom reminder subject"), validators=[Optional()]
+    )
+    reminder_body = TextAreaField(
+        _l("Custom reminder message"), validators=[Optional()]
     )
 
 

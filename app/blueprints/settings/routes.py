@@ -490,6 +490,8 @@ def smtp_settings():
         config.reminder_schedule = ",".join(
             str(d) for d in parse_reminder_schedule(form.reminder_schedule.data)
         )
+        config.reminder_subject = (form.reminder_subject.data or "").strip() or None
+        config.reminder_body = (form.reminder_body.data or "").strip() or None
 
         db.session.commit()
         flash(_("SMTP configuration saved successfully"), "success")
@@ -506,6 +508,8 @@ def smtp_settings():
         form.from_email.data = config.from_email
         form.from_name.data = config.from_name
         form.reminder_schedule.data = config.reminder_schedule
+        form.reminder_subject.data = config.reminder_subject
+        form.reminder_body.data = config.reminder_body
         # password field intentionally left blank on GET
 
     return render_template(
