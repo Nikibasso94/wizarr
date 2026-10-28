@@ -1218,6 +1218,12 @@ class SMTPConfiguration(db.Model):
     # without a separate toggle.
     reminder_schedule = db.Column(db.String, nullable=False, default="3")
 
+    # Custom content for the expiry reminder email. Both must be non-empty
+    # to override the built-in default copy. May use {{username}},
+    # {{email}}, and {{days_left}} placeholders (see app/services/custom_email.py).
+    reminder_subject = db.Column(db.String, nullable=True)
+    reminder_body = db.Column(db.Text, nullable=True)
+
     created_at = db.Column(
         db.DateTime, default=lambda: datetime.now(UTC), nullable=False
     )

@@ -80,9 +80,26 @@ def send_invite_email(to_email: str, invite_link: str, invite_code: str) -> None
 
 
 def send_expiry_reminder_email(user: User, days_left: int) -> None:
-    html = render_template("email/expiry_reminder.html", user=user, days_left=days_left)
-    text = render_template("email/expiry_reminder.txt", user=user, days_left=days_left)
-    send_email(user.email, "Your access is expiring soon", html, text)
+    config = _get_active_config()
+    custom_subject = (config.reminder_subject or "").strip() if config else ""
+    custom_body = (config.reminder_body or "").strip() if config else ""
+
+    if custom_subject and custom_body:
+        from app.services.custom_email import render_custom_email
+
+        subject, html, text = render_custom_email(
+            custom_subject, custom_body, user, extra={"days_left": str(days_left)}
+        )
+    else:
+        subject = "Your access is expiring soon"
+        html = render_template(
+            "email/expiry_reminder.html", user=user, days_left=days_left
+        )
+        text = render_template(
+            "email/expiry_reminder.txt", user=user, days_left=days_left
+        )
+
+    send_email(user.email, subject, html, text, config=config)
 
 
 def send_test_email(to_email: str, config: SMTPConfiguration) -> None:
