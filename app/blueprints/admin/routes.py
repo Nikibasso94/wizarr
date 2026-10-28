@@ -696,7 +696,7 @@ def user_detail(db_id: int):
                 )
             else:
                 user.expires = None
-            user.expiry_reminder_sent_at = None
+            user.expiry_reminders_sent = None
 
         # Update notes only if present in form
         if "notes" in request.form:

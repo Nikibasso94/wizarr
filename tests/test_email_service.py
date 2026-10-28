@@ -10,6 +10,14 @@ from app.services.email import EmailSendError, send_email
 from app.services.ldap.encryption import encrypt_credential
 
 
+@pytest.fixture(autouse=True)
+def _cleanup_smtp_config(session):
+    # The `session` fixture does not clean up this singleton config table.
+    yield
+    SMTPConfiguration.query.delete()
+    session.commit()
+
+
 @pytest.fixture
 def smtp_config(session):
     config = SMTPConfiguration(
@@ -21,7 +29,7 @@ def smtp_config(session):
         password_encrypted=encrypt_credential("secret"),
         from_email="wizarr@example.com",
         from_name="Wizarr",
-        reminder_days_before=3,
+        reminder_schedule="3",
     )
     session.add(config)
     session.commit()
@@ -44,7 +52,7 @@ def test_send_email_raises_when_disabled(session):
         port=587,
         encryption="none",
         from_email="wizarr@example.com",
-        reminder_days_before=3,
+        reminder_schedule="3",
     )
     session.add(config)
     session.commit()

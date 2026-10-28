@@ -147,7 +147,7 @@ class TestAPIUsers:
     def test_extend_user_expiry_success(self, client, session, api_key, sample_data):
         user = session.get(User, sample_data["user_id"])
         old_expiry = user.expires
-        user.expiry_reminder_sent_at = datetime.now(UTC)
+        user.expiry_reminders_sent = [7, 3]
         session.commit()
 
         response = client.post(
@@ -162,13 +162,13 @@ class TestAPIUsers:
         session.refresh(user)
         assert user.expires == old_expiry + timedelta(days=14)
         assert data["new_expiry"] == user.expires.isoformat()
-        assert user.expiry_reminder_sent_at is None
+        assert user.expiry_reminders_sent is None
 
     def test_update_user_expiry_resets_reminder_flag(
         self, client, session, api_key, sample_data
     ):
         user = session.get(User, sample_data["user_id"])
-        user.expiry_reminder_sent_at = datetime.now(UTC)
+        user.expiry_reminders_sent = [7, 3]
         session.commit()
 
         response = client.put(
@@ -179,7 +179,7 @@ class TestAPIUsers:
         assert response.status_code == 200
 
         session.refresh(user)
-        assert user.expiry_reminder_sent_at is None
+        assert user.expiry_reminders_sent is None
 
     def test_extend_user_expiry_not_found(self, client, api_key):
         response = client.post(

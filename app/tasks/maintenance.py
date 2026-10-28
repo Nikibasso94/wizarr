@@ -166,13 +166,20 @@ def send_expiry_reminders(app=None):
         from app.extensions import db
         from app.models import SMTPConfiguration
         from app.services.email import EmailSendError, send_expiry_reminder_email
-        from app.services.expiry import get_users_needing_reminder
+        from app.services.expiry import (
+            get_users_needing_reminder,
+            parse_reminder_schedule,
+        )
 
         config = SMTPConfiguration.query.first()
-        if not config or not config.enabled or not config.reminder_days_before:
+        if not config or not config.enabled:
             return
 
-        users = get_users_needing_reminder(config.reminder_days_before)
+        thresholds = parse_reminder_schedule(config.reminder_schedule)
+        if not thresholds:
+            return
+
+        users = get_users_needing_reminder(thresholds)
         sent = 0
         for user in users:
             try:
@@ -182,8 +189,16 @@ def send_expiry_reminders(app=None):
                     user_expires = user_expires.replace(tzinfo=datetime.UTC)
                 now = datetime.datetime.now(datetime.UTC)
                 days_left = max(1, round((user_expires - now).total_seconds() / 86400))
+
+                already_sent = set(user.expiry_reminders_sent or [])
+                due = [
+                    t for t in thresholds if days_left <= t and t not in already_sent
+                ]
+                if not due:
+                    continue
+
                 send_expiry_reminder_email(user, days_left)
-                user.expiry_reminder_sent_at = datetime.datetime.now(datetime.UTC)
+                user.expiry_reminders_sent = sorted(already_sent | set(due))
                 db.session.commit()
                 sent += 1
             except EmailSendError as exc:

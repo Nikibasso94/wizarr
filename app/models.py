@@ -180,10 +180,10 @@ class User(db.Model, UserMixin):
     code = db.Column(db.String, nullable=False)
     photo = db.Column(db.String, nullable=True)
     expires = db.Column(db.DateTime, nullable=True)
-    # Timestamp of the last expiry-reminder email sent for the *current*
-    # `expires` value. Reset to None whenever `expires` is reassigned so a
-    # renewed user becomes eligible for a fresh reminder.
-    expiry_reminder_sent_at = db.Column(db.DateTime, nullable=True)
+    # Day-before-expiry thresholds (e.g. [7, 3]) already emailed for the
+    # *current* `expires` value. Reset to None whenever `expires` is
+    # reassigned so a renewed user becomes eligible for fresh reminders.
+    expiry_reminders_sent = db.Column(db.JSON, nullable=True)
     server_id = db.Column(
         db.Integer, db.ForeignKey("media_server.id", ondelete="CASCADE"), nullable=True
     )
@@ -1213,9 +1213,10 @@ class SMTPConfiguration(db.Model):
     from_email = db.Column(db.String, nullable=False)
     from_name = db.Column(db.String, nullable=True, default="Wizarr")
 
-    # Days before a user's access expires to send them a reminder email.
-    # 0 disables the reminder job without a separate toggle.
-    reminder_days_before = db.Column(db.Integer, nullable=False, default=3)
+    # Comma-separated days-before-expiry thresholds to send reminder
+    # emails at (e.g. "7,3,1"). Empty string disables the reminder job
+    # without a separate toggle.
+    reminder_schedule = db.Column(db.String, nullable=False, default="3")
 
     created_at = db.Column(
         db.DateTime, default=lambda: datetime.now(UTC), nullable=False
