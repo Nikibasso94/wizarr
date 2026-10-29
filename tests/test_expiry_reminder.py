@@ -6,13 +6,21 @@ from unittest.mock import patch
 import pytest
 
 from app.extensions import db
-from app.models import SMTPConfiguration, User
+from app.models import Identity, MediaServer, SMTPConfiguration, User
 from app.services.email import EmailSendError
 from app.services.expiry import get_users_needing_reminder, parse_reminder_schedule
 from app.tasks.maintenance import send_expiry_reminders
 
 
-def _user(session, *, expires_in_days, email="user@example.com", reminded=None):
+def _user(
+    session,
+    *,
+    expires_in_days,
+    email="user@example.com",
+    reminded=None,
+    identity_id=None,
+    server_id=None,
+):
     user = User(
         token=f"tok-{id(object())}",
         username="user",
@@ -21,10 +29,24 @@ def _user(session, *, expires_in_days, email="user@example.com", reminded=None):
         expires=datetime.datetime.now(datetime.UTC)
         + datetime.timedelta(days=expires_in_days),
         expiry_reminders_sent=reminded,
+        identity_id=identity_id,
+        server_id=server_id,
     )
     session.add(user)
     session.commit()
     return user
+
+
+def _server(session, name, server_type="plex"):
+    # Default to "plex" (not jellyfin/emby) deliberately: resolve_recipient_email()
+    # must work for any server type, unlike current_email() which is scoped
+    # to the Wizarr-editable jellyfin/emby/no-server accounts.
+    server = MediaServer(
+        name=name, server_type=server_type, url="http://media.local", api_key="k"
+    )
+    session.add(server)
+    session.commit()
+    return server
 
 
 @pytest.fixture(autouse=True)
@@ -136,7 +158,7 @@ def test_send_expiry_reminders_sends_and_marks_threshold(app, smtp_config, sessi
 
     with patch(
         "app.services.email.send_expiry_reminder_email",
-        side_effect=lambda user, _days_left: sent_to_ids.append(user.id),
+        side_effect=lambda user, _days_left, **_kwargs: sent_to_ids.append(user.id),
     ):
         send_expiry_reminders(app)
 
@@ -158,7 +180,7 @@ def test_send_expiry_reminders_isolates_per_user_failures(app, smtp_config, sess
     failing_id = _user(session, expires_in_days=1, email="fail@example.com").id
     ok_id = _user(session, expires_in_days=2, email="ok@example.com").id
 
-    def _send(user, _days_left):
+    def _send(user, _days_left, **_kwargs):
         if user.id == failing_id:
             raise EmailSendError("boom")
 
@@ -215,6 +237,111 @@ def test_send_expiry_reminders_sends_one_email_when_multiple_thresholds_catch_up
         send_expiry_reminders(app)
 
     send.assert_not_called()
+
+
+# ─── grouping accounts of the same person into one email ───────────────────
+
+
+def test_combines_due_accounts_of_the_same_person_into_one_email(
+    app, smtp_config, session
+):
+    identity = Identity()
+    session.add(identity)
+    session.commit()
+    plex = _server(session, "Plex")
+    kavita = _server(session, "Kavita")
+
+    plex_user = _user(
+        session,
+        expires_in_days=1,
+        email="person@example.com",
+        identity_id=identity.id,
+        server_id=plex.id,
+    )
+    kavita_user = _user(
+        session,
+        expires_in_days=2,
+        email="person@example.com",
+        identity_id=identity.id,
+        server_id=kavita.id,
+    )
+
+    with patch("app.services.email.send_expiry_reminder_email") as send:
+        send_expiry_reminders(app)
+
+    assert send.call_count == 1
+    kwargs = send.call_args.kwargs
+    assert kwargs["to_email"] == "person@example.com"
+    assert kwargs["services"] == "Kavita, Plex"
+    # The combined email uses the most urgent (smaller) days_left.
+    assert send.call_args.args[1] == 1
+
+    assert db.session.get(User, plex_user.id).expiry_reminders_sent == [3]
+    assert db.session.get(User, kavita_user.id).expiry_reminders_sent == [3]
+
+
+def test_group_send_failure_leaves_no_account_marked(app, smtp_config, session):
+    identity = Identity()
+    session.add(identity)
+    session.commit()
+    plex = _server(session, "Plex")
+    kavita = _server(session, "Kavita")
+
+    u1 = _user(
+        session,
+        expires_in_days=1,
+        email="person@example.com",
+        identity_id=identity.id,
+        server_id=plex.id,
+    )
+    u2 = _user(
+        session,
+        expires_in_days=1,
+        email="person@example.com",
+        identity_id=identity.id,
+        server_id=kavita.id,
+    )
+
+    with patch(
+        "app.services.email.send_expiry_reminder_email",
+        side_effect=EmailSendError("boom"),
+    ):
+        send_expiry_reminders(app)
+
+    assert db.session.get(User, u1.id).expiry_reminders_sent is None
+    assert db.session.get(User, u2.id).expiry_reminders_sent is None
+
+
+def test_account_not_yet_due_is_not_grouped_with_its_sibling(app, smtp_config, session):
+    """One account due now, its sibling not due until a later threshold -
+    only the due one is named/sent; the other gets its own email later."""
+    identity = Identity()
+    session.add(identity)
+    session.commit()
+    plex = _server(session, "Plex")
+    kavita = _server(session, "Kavita")
+
+    due_now = _user(
+        session,
+        expires_in_days=1,
+        email="person@example.com",
+        identity_id=identity.id,
+        server_id=plex.id,
+    )
+    _user(
+        session,
+        expires_in_days=10,  # outside the "3" day schedule window
+        email="person@example.com",
+        identity_id=identity.id,
+        server_id=kavita.id,
+    )
+
+    with patch("app.services.email.send_expiry_reminder_email") as send:
+        send_expiry_reminders(app)
+
+    assert send.call_count == 1
+    assert send.call_args.kwargs["services"] == "Plex"
+    assert db.session.get(User, due_now.id).expiry_reminders_sent == [3]
 
 
 # ─── reset on expiry change ─────────────────────────────────────────────────

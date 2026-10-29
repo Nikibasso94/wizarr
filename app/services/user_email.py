@@ -38,6 +38,28 @@ def current_email(user: User) -> str:
     return ""
 
 
+def resolve_recipient_email(user: User) -> str:
+    """Best-known address to actually send mail to this person, for any
+    server type.
+
+    Unlike current_email(), which is scoped to the Wizarr-editable
+    accounts shown in the admin edit-email form (only jellyfin/emby/no
+    server), this also considers Plex/Kavita/Audiobookshelf/etc. accounts
+    - current_email() would incorrectly return "" for those even when
+    their .email is populated, since those servers are not "Wizarr-kept".
+    """
+    identity = user.identity
+    if identity:
+        if identity.primary_email and EMAIL_RE.fullmatch(identity.primary_email):
+            return identity.primary_email
+        found = _first_valid_email(identity)
+        if found:
+            return found
+    if user.email and EMAIL_RE.fullmatch(user.email):
+        return user.email
+    return ""
+
+
 def set_user_email(user: User, raw_email: str) -> None:
     """Store one address on all accounts of this person that Wizarr keeps.
 

@@ -6,24 +6,41 @@ from unittest.mock import patch
 
 import pytest
 
-from app.models import EmailTemplate, Identity, User
+from app.models import EmailTemplate, Identity, MediaServer, User
 from app.services.custom_email import substitute_placeholders
 from app.services.email import EmailSendError
 
 HX = {"HX-Request": "true"}
 
 
-def _user(session, *, username="alice", email="alice@example.com", identity_id=None):
+def _user(
+    session,
+    *,
+    username="alice",
+    email="alice@example.com",
+    identity_id=None,
+    server_id=None,
+):
     user = User(
         token=f"tok-{id(object())}",
         username=username,
         email=email,
         code="CODE",
         identity_id=identity_id,
+        server_id=server_id,
     )
     session.add(user)
     session.commit()
     return user
+
+
+def _server(session, name, server_type="plex"):
+    server = MediaServer(
+        name=name, server_type=server_type, url="http://media.local", api_key="k"
+    )
+    session.add(server)
+    session.commit()
+    return server
 
 
 @pytest.fixture(autouse=True)
@@ -217,6 +234,27 @@ def test_duplicate_identity_accounts_receive_one_email(admin_client, session):
         )
 
     assert send.call_count == 1
+
+
+def test_plex_user_without_identity_receives_the_email(admin_client, session):
+    """Regression test: resolving the recipient must not depend on the
+    server being jellyfin/emby (current_email() is scoped to those for the
+    edit-email form and would wrongly resolve to "" for a Plex account)."""
+    plex = _server(session, "Plex", server_type="plex")
+    user = _user(
+        session, username="plexuser", email="plex@example.com", server_id=plex.id
+    )
+
+    with patch("app.services.email.send_email") as send:
+        resp = admin_client.post(
+            "/users/send-email",
+            data={"uids": [str(user.id)], "subject": "Subject", "body": "Body"},
+            headers=HX,
+        )
+
+    assert resp.status_code == 200
+    send.assert_called_once()
+    assert send.call_args.args[0] == "plex@example.com"
 
 
 def test_missing_subject_or_body_returns_400(admin_client, session):

@@ -1128,7 +1128,7 @@ def send_users_email():
 
     from app.services.custom_email import render_custom_email
     from app.services.email import EmailSendError, send_email
-    from app.services.user_email import current_email
+    from app.services.user_email import resolve_recipient_email
 
     users = User.query.filter(User.id.in_(uids)).all()
 
@@ -1139,7 +1139,7 @@ def send_users_email():
     sent: list[str] = []
     failed: list[tuple[str, str]] = []
     for user in users:
-        to_email = current_email(user)
+        to_email = resolve_recipient_email(user)
         if not to_email or to_email.lower() in seen_emails:
             continue
         seen_emails.add(to_email.lower())
