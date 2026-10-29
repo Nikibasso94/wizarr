@@ -13,6 +13,7 @@ from app.models import Identity, MediaServer, User
 from app.services.user_email import (
     InvalidEmailError,
     current_email,
+    resolve_recipient_email,
     set_user_email,
 )
 
@@ -147,3 +148,43 @@ def test_modal_has_no_email_field_for_plex_only_user(admin_client, app, servers)
     modal = admin_client.get(f"/user/{user_id}").get_data(as_text=True)
 
     assert 'name="email"' not in modal
+
+
+# ─── resolve_recipient_email ─────────────────────────────────────────────────
+#
+# Unlike current_email() (scoped to jellyfin/emby/no-server accounts, for
+# the admin edit-email form), resolve_recipient_email() must find a usable
+# address for ANY server type - it's used to decide where to actually send
+# mail (invite links, reminders, bulk custom emails).
+
+
+def test_resolve_recipient_email_works_for_plex_without_identity(app, servers):
+    with app.app_context():
+        user = _user(servers["plex"], "plex_solo", "plex@example.com")
+
+        assert current_email(user) == ""  # the known gap this fixes
+        assert resolve_recipient_email(user) == "plex@example.com"
+
+
+def test_resolve_recipient_email_uses_identity_primary_email(app, servers):
+    with app.app_context():
+        identity = Identity(primary_email="plex@example.com")
+        plex = _user(servers["plex"], "pat_plex", "plex@example.com", identity)
+
+        assert resolve_recipient_email(plex) == "plex@example.com"
+
+
+def test_resolve_recipient_email_falls_back_to_sibling_account(app, servers):
+    with app.app_context():
+        identity = Identity(primary_email=None)
+        plex = _user(servers["plex"], "pat_plex2", "plex@example.com", identity)
+        _user(servers["jellyfin"], "pat_jf2", "empty", identity)
+
+        assert resolve_recipient_email(plex) == "plex@example.com"
+
+
+def test_resolve_recipient_email_returns_blank_when_nothing_valid(app, servers):
+    with app.app_context():
+        user = _user(servers["plex"], "plex_none", "empty")
+
+        assert resolve_recipient_email(user) == ""

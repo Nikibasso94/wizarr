@@ -79,7 +79,17 @@ def send_invite_email(to_email: str, invite_link: str, invite_code: str) -> None
     send_email(to_email, "You've been invited", html, text)
 
 
-def send_expiry_reminder_email(user: User, days_left: int) -> None:
+def send_expiry_reminder_email(
+    user: User, days_left: int, *, to_email: str | None = None, services: str = ""
+) -> None:
+    """Send one reminder, optionally combining several of the same person's
+    accounts into one email. `to_email` overrides `user.email` - needed
+    when `user` is just a representative picked from a group of accounts
+    resolved to the same real address via identity linking. `services` is
+    a pre-joined, human-readable list of the server names involved, for
+    the {{services}} placeholder in a custom reminder message.
+    """
+    to_email = to_email or user.email
     config = _get_active_config()
     custom_subject = (config.reminder_subject or "").strip() if config else ""
     custom_body = (config.reminder_body or "").strip() if config else ""
@@ -88,7 +98,10 @@ def send_expiry_reminder_email(user: User, days_left: int) -> None:
         from app.services.custom_email import render_custom_email
 
         subject, html, text = render_custom_email(
-            custom_subject, custom_body, user, extra={"days_left": str(days_left)}
+            custom_subject,
+            custom_body,
+            user,
+            extra={"days_left": str(days_left), "services": services},
         )
     else:
         subject = "Your access is expiring soon"
@@ -99,7 +112,7 @@ def send_expiry_reminder_email(user: User, days_left: int) -> None:
             "email/expiry_reminder.txt", user=user, days_left=days_left
         )
 
-    send_email(user.email, subject, html, text, config=config)
+    send_email(to_email, subject, html, text, config=config)
 
 
 def send_test_email(to_email: str, config: SMTPConfiguration) -> None:

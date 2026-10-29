@@ -144,9 +144,12 @@ def check_expiring(app=None):
 def send_expiry_reminders(app=None):
     """Email users whose access expires within the configured reminder window.
 
-    Each user is isolated: a failure for one user is logged and does not
-    stop the remaining users, mirroring check_expiring()'s use of
-    disable_or_delete_user_if_expired().
+    Accounts that are due in the same run and resolve to the same real
+    address (e.g. several linked server accounts of one person) are
+    combined into a single email listing every due service, instead of
+    one email per account. Each group is isolated: a failure sending to
+    one group is logged and does not stop the remaining groups, mirroring
+    check_expiring()'s use of disable_or_delete_user_if_expired().
 
     Args:
         app: Flask application instance. If None, will try to get from current context.
@@ -163,6 +166,8 @@ def send_expiry_reminders(app=None):
             return
 
     with app.app_context():
+        from collections import defaultdict
+
         from app.extensions import db
         from app.models import SMTPConfiguration
         from app.services.email import EmailSendError, send_expiry_reminder_email
@@ -170,6 +175,7 @@ def send_expiry_reminders(app=None):
             get_users_needing_reminder,
             parse_reminder_schedule,
         )
+        from app.services.user_email import resolve_recipient_email
 
         config = SMTPConfiguration.query.first()
         if not config or not config.enabled:
@@ -179,38 +185,56 @@ def send_expiry_reminders(app=None):
         if not thresholds:
             return
 
-        users = get_users_needing_reminder(thresholds)
+        now = datetime.datetime.now(datetime.UTC)
+        candidates = []  # (user, days_left, due_thresholds)
+        for user in get_users_needing_reminder(thresholds):
+            # Database stores naive UTC datetimes.
+            user_expires = user.expires
+            if user_expires.tzinfo is None:
+                user_expires = user_expires.replace(tzinfo=datetime.UTC)
+            days_left = max(1, round((user_expires - now).total_seconds() / 86400))
+
+            already_sent = set(user.expiry_reminders_sent or [])
+            due = {t for t in thresholds if days_left <= t and t not in already_sent}
+            if due:
+                candidates.append((user, days_left, due))
+
+        groups = defaultdict(list)
+        for user, days_left, due in candidates:
+            to_email = resolve_recipient_email(user)
+            if to_email:
+                groups[to_email.lower()].append((user, days_left, due))
+
         sent = 0
-        for user in users:
+        for to_email, group in groups.items():
             try:
-                # Database stores naive UTC datetimes.
-                user_expires = user.expires
-                if user_expires.tzinfo is None:
-                    user_expires = user_expires.replace(tzinfo=datetime.UTC)
-                now = datetime.datetime.now(datetime.UTC)
-                days_left = max(1, round((user_expires - now).total_seconds() / 86400))
+                representative = min(group, key=lambda g: g[1])[0]
+                group_days_left = min(days_left for _, days_left, _ in group)
+                services = ", ".join(
+                    sorted({u.server.name for u, _, _ in group if u.server})
+                )
 
-                already_sent = set(user.expiry_reminders_sent or [])
-                due = [
-                    t for t in thresholds if days_left <= t and t not in already_sent
-                ]
-                if not due:
-                    continue
-
-                send_expiry_reminder_email(user, days_left)
-                user.expiry_reminders_sent = sorted(already_sent | set(due))
+                send_expiry_reminder_email(
+                    representative,
+                    group_days_left,
+                    to_email=to_email,
+                    services=services,
+                )
+                for user, _, due in group:
+                    already_sent = set(user.expiry_reminders_sent or [])
+                    user.expiry_reminders_sent = sorted(already_sent | due)
                 db.session.commit()
                 sent += 1
             except EmailSendError as exc:
                 db.session.rollback()
                 logging.warning(
-                    "Failed to send expiry reminder to user %s: %s", user.id, exc
+                    "Failed to send expiry reminder to %s: %s", to_email, exc
                 )
             except Exception as exc:
                 db.session.rollback()
                 logging.error(
-                    "Unexpected error sending expiry reminder to user %s: %s",
-                    user.id,
+                    "Unexpected error sending expiry reminder to %s: %s",
+                    to_email,
                     exc,
                 )
 

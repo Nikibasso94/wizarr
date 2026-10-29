@@ -160,3 +160,41 @@ def test_reminder_falls_back_when_only_subject_is_set(smtp_config, session):
         send_expiry_reminder_email(user, 2)
 
     assert send.call_args.args[1] == "Your access is expiring soon"
+
+
+def test_reminder_to_email_overrides_user_email(smtp_config, session):
+    """to_email lets a group pick a representative user whose own raw
+    .email differs from the resolved address the group is sent to."""
+    user = _user(session, username="dana", email="dana-raw@example.com")
+
+    with patch("app.services.email.send_email") as send:
+        send_expiry_reminder_email(user, 3, to_email="dana-resolved@example.com")
+
+    assert send.call_args.args[0] == "dana-resolved@example.com"
+
+
+def test_reminder_substitutes_services_placeholder(smtp_config, session):
+    smtp_config.reminder_subject = "Renewal"
+    smtp_config.reminder_body = (
+        "Your access to {{services}} expires in {{days_left}} days."
+    )
+    session.commit()
+    user = _user(session, username="erin")
+
+    with patch("app.services.email.send_email") as send:
+        send_expiry_reminder_email(user, 4, services="Plex, Kavita")
+
+    html = send.call_args.args[2]
+    assert "Your access to Plex, Kavita expires in 4 days." in html
+
+
+def test_reminder_services_defaults_to_blank(smtp_config, session):
+    smtp_config.reminder_subject = "Renewal"
+    smtp_config.reminder_body = "Services: {{services}}"
+    session.commit()
+    user = _user(session)
+
+    with patch("app.services.email.send_email") as send:
+        send_expiry_reminder_email(user, 1)
+
+    assert "Services: " in send.call_args.args[2]
