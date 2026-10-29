@@ -391,3 +391,87 @@ def test_admin_clearing_expiry_resets_reminder_flag(admin_client, session):
 
     assert resp.status_code == 200
     assert db.session.get(User, user.id).expiry_reminders_sent is None
+
+
+# ─── "apply to all" linked accounts ─────────────────────────────────────────
+
+
+def test_apply_to_all_updates_every_linked_account(admin_client, session):
+    identity = Identity()
+    session.add(identity)
+    session.commit()
+    plex = _server(session, "Plex")
+    kavita = _server(session, "Kavita")
+
+    u1 = _user(
+        session,
+        expires_in_days=1,
+        identity_id=identity.id,
+        server_id=plex.id,
+        reminded=[3],
+    )
+    u2 = _user(
+        session,
+        expires_in_days=5,
+        identity_id=identity.id,
+        server_id=kavita.id,
+        reminded=[7],
+    )
+    u1_old_expires, u2_old_expires = u1.expires, u2.expires
+
+    resp = admin_client.post(
+        f"/user/{u1.id}",
+        data={"expires": "2030-01-01T00:00", "apply_to_all": "true"},
+    )
+
+    assert resp.status_code == 200
+    updated1 = db.session.get(User, u1.id)
+    updated2 = db.session.get(User, u2.id)
+    # local_to_utc()'s exact offset depends on the resolved local timezone
+    # (see tests/test_local_time_display.py), so assert the two accounts
+    # agree with each other and both moved off their original expiry,
+    # rather than a hardcoded absolute UTC value.
+    assert updated1.expires == updated2.expires
+    assert updated1.expires != u1_old_expires
+    assert updated2.expires != u2_old_expires
+    assert updated1.expiry_reminders_sent is None
+    assert updated2.expiry_reminders_sent is None
+
+
+def test_apply_to_all_without_identity_only_updates_the_one_account(
+    admin_client, session
+):
+    user = _user(session, expires_in_days=1)
+    old_expires = user.expires
+
+    resp = admin_client.post(
+        f"/user/{user.id}",
+        data={"expires": "2030-01-01T00:00", "apply_to_all": "true"},
+    )
+
+    assert resp.status_code == 200
+    assert db.session.get(User, user.id).expires != old_expires
+
+
+def test_without_apply_to_all_flag_only_updates_the_single_account(
+    admin_client, session
+):
+    identity = Identity()
+    session.add(identity)
+    session.commit()
+    plex = _server(session, "Plex")
+    kavita = _server(session, "Kavita")
+
+    u1 = _user(session, expires_in_days=1, identity_id=identity.id, server_id=plex.id)
+    u2 = _user(session, expires_in_days=5, identity_id=identity.id, server_id=kavita.id)
+    u1_old_expires = u1.expires
+    u2_id, u2_old_expires = u2.id, u2.expires
+
+    resp = admin_client.post(
+        f"/user/{u1.id}",
+        data={"expires": "2030-01-01T00:00"},
+    )
+
+    assert resp.status_code == 200
+    assert db.session.get(User, u1.id).expires != u1_old_expires
+    assert db.session.get(User, u2_id).expires == u2_old_expires

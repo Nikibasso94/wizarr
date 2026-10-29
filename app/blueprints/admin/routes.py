@@ -692,12 +692,19 @@ def user_detail(db_id: int):
             if raw_expires:
                 # The datetime-local input is rendered in local time, so read
                 # it back as local time and store UTC.
-                user.expires = local_to_utc(
-                    datetime.datetime.fromisoformat(raw_expires)
-                )
+                new_expires = local_to_utc(datetime.datetime.fromisoformat(raw_expires))
             else:
-                user.expires = None
-            user.expiry_reminders_sent = None
+                new_expires = None
+
+            # "Apply to all" sets the same expiry on every linked account of
+            # this person at once, instead of one tab at a time.
+            targets = [user]
+            if request.form.get("apply_to_all") == "true" and user.identity_id:
+                targets = User.query.filter_by(identity_id=user.identity_id).all()
+
+            for target in targets:
+                target.expires = new_expires
+                target.expiry_reminders_sent = None
 
         # Update notes only if present in form
         if "notes" in request.form:
