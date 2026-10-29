@@ -152,6 +152,28 @@ def test_send_expiry_reminders_noop_when_schedule_is_empty(app, session):
     send.assert_not_called()
 
 
+def test_send_expiry_reminders_logs_why_an_unresolvable_account_is_skipped(
+    app, smtp_config, session, caplog
+):
+    """When a due account has no resolvable e-mail address, this must be
+    visible in the logs instead of silently disappearing - this is exactly
+    what happened in a real deployment and took a while to diagnose without
+    this log line."""
+    import logging as stdlib_logging
+
+    # Passes the SQL ".email != ''" filter in get_users_needing_reminder(),
+    # but EMAIL_RE.fullmatch() rejects it in resolve_recipient_email() -
+    # exactly the "due, but unresolvable" scenario this log line covers.
+    user = _user(session, expires_in_days=1, email="not-an-email")
+
+    with caplog.at_level(stdlib_logging.INFO):
+        send_expiry_reminders(app)
+
+    assert "no resolvable e-mail address" in caplog.text
+    assert f"{user.id}" in caplog.text
+    assert "unresolved=1" in caplog.text
+
+
 def test_send_expiry_reminders_sends_and_marks_threshold(app, smtp_config, session):
     user_id = _user(session, expires_in_days=1).id
     sent_to_ids = []
