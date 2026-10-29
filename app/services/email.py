@@ -2,6 +2,7 @@ import logging
 import smtplib
 import ssl
 from email.message import EmailMessage
+from email.utils import formatdate, make_msgid
 
 from flask import render_template
 
@@ -42,6 +43,11 @@ def send_email(
         else config.from_email
     )
     msg["To"] = to_email
+    msg["Date"] = formatdate(localtime=True)
+    # Spam filters expect a Message-ID whose domain matches the sender, not
+    # the container's internal hostname (the default Message-ID domain).
+    domain = config.from_email.rsplit("@", 1)[-1]
+    msg["Message-ID"] = make_msgid(domain=domain)
     msg.set_content(text_body or html_body)
     if text_body:
         msg.add_alternative(html_body, subtype="html")
