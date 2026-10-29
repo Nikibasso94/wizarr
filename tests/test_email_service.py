@@ -90,6 +90,22 @@ def test_send_email_uses_starttls_and_logs_in(smtp_config):
     assert "Wizarr" in sent_msg["From"]
 
 
+def test_send_email_sets_date_and_message_id_for_deliverability(smtp_config):
+    """Missing Date/Message-ID headers are a common spam-filter trigger, and
+    the Message-ID domain should match the sender, not the container's
+    internal hostname."""
+    with patch("app.services.email.smtplib.SMTP") as smtp_cls:
+        server = MagicMock()
+        smtp_cls.return_value.__enter__.return_value = server
+
+        send_email("to@example.com", "Subject", "<p>Hi</p>")
+
+    sent_msg = server.send_message.call_args[0][0]
+    assert sent_msg["Date"]
+    assert sent_msg["Message-ID"]
+    assert sent_msg["Message-ID"].endswith("@example.com>")
+
+
 def test_send_email_uses_ssl(smtp_config):
     smtp_config.encryption = "ssl"
 
