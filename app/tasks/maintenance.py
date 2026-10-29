@@ -179,10 +179,16 @@ def send_expiry_reminders(app=None):
 
         config = SMTPConfiguration.query.first()
         if not config or not config.enabled:
+            logging.info(
+                "📧 Expiry reminders: skipped (SMTP is not configured or not enabled)."
+            )
             return
 
         thresholds = parse_reminder_schedule(config.reminder_schedule)
         if not thresholds:
+            logging.info(
+                "📧 Expiry reminders: skipped (no reminder schedule configured)."
+            )
             return
 
         now = datetime.datetime.now(datetime.UTC)
@@ -200,10 +206,28 @@ def send_expiry_reminders(app=None):
                 candidates.append((user, days_left, due))
 
         groups = defaultdict(list)
+        unresolved = 0
         for user, days_left, due in candidates:
             to_email = resolve_recipient_email(user)
             if to_email:
                 groups[to_email.lower()].append((user, days_left, due))
+            else:
+                unresolved += 1
+                logging.warning(
+                    "📧 Expiry reminders: user %s (%s) is due but has no "
+                    "resolvable e-mail address, skipping.",
+                    user.id,
+                    user.username,
+                )
+
+        logging.info(
+            "📧 Expiry reminders: thresholds=%s, due accounts=%s, "
+            "unresolved=%s, groups to send=%s",
+            thresholds,
+            len(candidates),
+            unresolved,
+            len(groups),
+        )
 
         sent = 0
         for to_email, group in groups.items():
