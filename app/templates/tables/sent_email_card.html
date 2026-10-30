@@ -1,0 +1,67 @@
+{% macro kind_badge(kind) -%}
+  <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-300">
+    {% if kind == "invite" %}
+      {{ _("Invite") }}
+    {% elif kind == "reminder" %}
+      {{ _("Reminder") }}
+    {% elif kind == "custom" %}
+      {{ _("Custom") }}
+    {% elif kind == "test" %}
+      {{ _("Test") }}
+    {% else %}
+      {{ kind }}
+    {% endif %}
+  </span>
+{%- endmacro %}
+{% macro status_badge(status) -%}
+  {% if status == "sent" %}
+    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400">
+      {{ _("Sent") }}
+    </span>
+  {% else %}
+    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400">
+      {{ _("Failed") }}
+    </span>
+  {% endif %}
+{%- endmacro %}
+<div id="sent_emails_table">
+  {% if logs %}
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm text-left text-gray-700 dark:text-gray-300">
+        <thead class="text-xs text-gray-500 uppercase dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+          <tr>
+            <th scope="col" class="py-3 pr-4">{{ _("To") }}</th>
+            <th scope="col" class="py-3 pr-4">{{ _("Subject") }}</th>
+            <th scope="col" class="py-3 pr-4">{{ _("Type") }}</th>
+            <th scope="col" class="py-3 pr-4">{{ _("Status") }}</th>
+            <th scope="col" class="py-3 pr-4">{{ _("Sent") }}</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+          {% for log in logs %}
+            <tr>
+              <td class="py-3 pr-4">{{ log.to_email }}</td>
+              <td class="py-3 pr-4 max-w-xs truncate" title="{{ log.subject }}">{{ log.subject }}</td>
+              <td class="py-3 pr-4">{{ kind_badge(log.kind) }}</td>
+              <td class="py-3 pr-4">
+                {{ status_badge(log.status) }}
+                {% if log.status == "failed" and log.error_message %}
+                  <p class="mt-1 text-xs text-red-600 dark:text-red-400 max-w-xs truncate"
+                     title="{{ log.error_message }}">{{ log.error_message }}</p>
+                {% endif %}
+              </td>
+              <td class="py-3 pr-4 whitespace-nowrap">{{ log.sent_at|human_date }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="text-center py-8 text-gray-500 dark:text-gray-400">{{ _("No emails sent yet.") }}</p>
+  {% endif %}
+  {% from "tables/_pagination.html" import pager %}
+  {{ pager(page, total_pages, total, start_index, end_index,
+    url=url_for('settings.sent_emails_table'),
+    target="#sent_emails_table",
+    include="#sent_emails_status_filter,#sent_emails_kind_filter") }}
+</div>

@@ -37,6 +37,7 @@ def test_all_maintenance_jobs_are_registered(app, session):
         "sync_ldap_users",
         "sqlite_optimize",
         "send_expiry_reminders",
+        "cleanup_email_logs",
     }
     for job in jobs.values():
         assert job["max_instances"] == 1

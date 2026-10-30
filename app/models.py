@@ -1259,6 +1259,24 @@ class EmailTemplate(db.Model):
     )
 
 
+class EmailLog(db.Model):
+    """A record of one outgoing email send attempt, success or failure."""
+
+    __tablename__ = "email_log"
+
+    id = db.Column(db.Integer, primary_key=True)
+    to_email = db.Column(db.String, nullable=False)
+    subject = db.Column(db.String, nullable=False)
+    # "invite" | "reminder" | "custom" | "test"
+    kind = db.Column(db.String, nullable=False)
+    # "sent" | "failed"
+    status = db.Column(db.String, nullable=False)
+    error_message = db.Column(db.Text, nullable=True)
+    sent_at = db.Column(
+        db.DateTime, default=lambda: datetime.now(UTC), nullable=False, index=True
+    )
+
+
 class LDAPGroup(db.Model):
     """LDAP groups available for invitation assignment."""
 

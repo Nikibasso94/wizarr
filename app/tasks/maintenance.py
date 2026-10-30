@@ -264,3 +264,38 @@ def send_expiry_reminders(app=None):
 
         if sent:
             logging.info("📧 Sent %s expiry reminder email(s).", sent)
+
+
+# Keep the sent-email log for this long before a daily cleanup job removes it.
+EMAIL_LOG_RETENTION_DAYS = 90
+
+
+def cleanup_email_logs(app=None):
+    """Delete email log entries older than EMAIL_LOG_RETENTION_DAYS.
+
+    Args:
+        app: Flask application instance. If None, will try to get from current context.
+    """
+    if app is None:
+        from flask import current_app
+
+        try:
+            app = current_app._get_current_object()  # type: ignore
+        except RuntimeError:
+            logging.error(
+                "cleanup_email_logs called outside application context and no app provided"
+            )
+            return
+
+    with app.app_context():
+        from app.extensions import db
+        from app.models import EmailLog
+
+        cutoff = datetime.datetime.now(datetime.UTC) - datetime.timedelta(
+            days=EMAIL_LOG_RETENTION_DAYS
+        )
+        deleted = EmailLog.query.filter(EmailLog.sent_at < cutoff).delete()
+        db.session.commit()
+
+        if deleted:
+            logging.info("🧹 Deleted %s old email log entries.", deleted)
