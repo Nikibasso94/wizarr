@@ -1152,7 +1152,7 @@ def send_users_email():
         seen_emails.add(to_email.lower())
         try:
             rendered_subject, html, text = render_custom_email(subject, body, user)
-            send_email(to_email, rendered_subject, html, text)
+            send_email(to_email, rendered_subject, html, text, kind="custom")
             sent.append(to_email)
         except EmailSendError as exc:
             failed.append((to_email, str(exc)))

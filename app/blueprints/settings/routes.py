@@ -1,6 +1,7 @@
 # app/blueprints/settings/routes.py
 import base64
 import logging
+import math
 
 from flask import (
     Blueprint,
@@ -686,4 +687,54 @@ def sync_all_ldap_users():
         imported_count=imported_count,
         skipped_count=skipped_count,
         errors=errors,
+    )
+
+
+SENT_EMAILS_PAGE_SIZE = 50
+
+
+@settings_bp.route("/sent-emails", methods=["GET"])
+@login_required
+def sent_emails_settings():
+    """Sent Emails log page."""
+    return render_template("settings/sent_emails.html")
+
+
+@settings_bp.route("/sent-emails/table", methods=["GET"])
+@login_required
+def sent_emails_table():
+    """Paginated, filterable table of logged email send attempts (HTMX)."""
+    from ...models import EmailLog
+
+    status = request.args.get("status") or ""
+    kind = request.args.get("kind") or ""
+
+    query = EmailLog.query
+    if status:
+        query = query.filter(EmailLog.status == status)
+    if kind:
+        query = query.filter(EmailLog.kind == kind)
+
+    page = max(request.values.get("page", default=1, type=int) or 1, 1)
+    total = query.order_by(None).count()
+    total_pages = max(math.ceil(total / SENT_EMAILS_PAGE_SIZE), 1)
+    page = min(page, total_pages)
+    offset = (page - 1) * SENT_EMAILS_PAGE_SIZE
+    logs = (
+        query.order_by(EmailLog.sent_at.desc())
+        .offset(offset)
+        .limit(SENT_EMAILS_PAGE_SIZE)
+        .all()
+    )
+
+    return render_template(
+        "tables/sent_email_card.html",
+        logs=logs,
+        page=page,
+        total_pages=total_pages,
+        total=total,
+        start_index=offset + 1 if logs else 0,
+        end_index=offset + len(logs),
+        status=status,
+        kind=kind,
     )

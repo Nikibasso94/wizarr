@@ -6,7 +6,7 @@ from email.utils import formatdate, make_msgid
 
 from flask import render_template
 
-from app.models import SMTPConfiguration, User
+from app.models import EmailLog, SMTPConfiguration, User
 from app.services.ldap.encryption import decrypt_credential
 
 logger = logging.getLogger(__name__)
@@ -23,16 +23,45 @@ def _get_active_config() -> SMTPConfiguration | None:
     return config
 
 
+def _log_email(
+    to_email: str, subject: str, kind: str, status: str, error_message: str | None
+) -> None:
+    """Record one send attempt. A logging failure must never mask or block
+    the real send outcome, so this isolates its own errors.
+    """
+    from app.extensions import db
+
+    try:
+        db.session.add(
+            EmailLog(
+                to_email=to_email,
+                subject=subject,
+                kind=kind,
+                status=status,
+                error_message=error_message,
+            )
+        )
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        logger.warning("Failed to record email log for %s: %s", to_email, exc)
+
+
 def send_email(
     to_email: str,
     subject: str,
     html_body: str,
     text_body: str | None = None,
     config: SMTPConfiguration | None = None,
+    *,
+    kind: str = "other",
 ) -> None:
     """Low-level send. Raises EmailSendError on any failure."""
     config = config or _get_active_config()
     if config is None:
+        _log_email(
+            to_email, subject, kind, "failed", "SMTP is not configured or not enabled"
+        )
         raise EmailSendError("SMTP is not configured or not enabled")
 
     msg = EmailMessage()
@@ -76,13 +105,16 @@ def send_email(
                 server.send_message(msg)
     except (smtplib.SMTPException, OSError) as exc:
         logger.warning("Failed to send email to %s: %s", to_email, exc)
+        _log_email(to_email, subject, kind, "failed", str(exc))
         raise EmailSendError(str(exc)) from exc
+
+    _log_email(to_email, subject, kind, "sent", None)
 
 
 def send_invite_email(to_email: str, invite_link: str, invite_code: str) -> None:
     html = render_template("email/invite.html", link=invite_link, code=invite_code)
     text = render_template("email/invite.txt", link=invite_link, code=invite_code)
-    send_email(to_email, "You've been invited", html, text)
+    send_email(to_email, "You've been invited", html, text, kind="invite")
 
 
 def send_expiry_reminder_email(
@@ -118,7 +150,7 @@ def send_expiry_reminder_email(
             "email/expiry_reminder.txt", user=user, days_left=days_left
         )
 
-    send_email(to_email, subject, html, text, config=config)
+    send_email(to_email, subject, html, text, config=config, kind="reminder")
 
 
 def send_test_email(to_email: str, config: SMTPConfiguration) -> None:
@@ -129,4 +161,5 @@ def send_test_email(to_email: str, config: SMTPConfiguration) -> None:
         "<p>This is a test email from Wizarr. If you received this, SMTP is configured correctly.</p>",
         "This is a test email from Wizarr. If you received this, SMTP is configured correctly.",
         config=config,
+        kind="test",
     )

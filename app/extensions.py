@@ -141,6 +141,7 @@ def register_scheduled_jobs(app, target_scheduler, now: datetime | None = None):
     from app.tasks.maintenance import (
         _get_expiry_check_interval,
         check_expiring,
+        cleanup_email_logs,
         optimize_sqlite_database,
         send_expiry_reminders,
     )
@@ -202,6 +203,16 @@ def register_scheduled_jobs(app, target_scheduler, now: datetime | None = None):
     target_scheduler.add_job(
         id="sqlite_optimize",
         func=optimize_sqlite_database,
+        args=[app],
+        trigger="interval",
+        hours=24,
+        **JOB_OPTIONS,
+    )
+
+    # Delete old email log entries once a day.
+    target_scheduler.add_job(
+        id="cleanup_email_logs",
+        func=cleanup_email_logs,
         args=[app],
         trigger="interval",
         hours=24,

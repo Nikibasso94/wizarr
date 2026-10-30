@@ -1,0 +1,57 @@
+<section class="animate__animated animate__fadeIn">
+  <div class="p-6 space-y-6">
+    <!-- Page Header -->
+    <div class="border-b border-gray-200 dark:border-gray-700 pb-6">
+      <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{{ _("Sent Emails") }}</h1>
+      <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
+        {{ _("A record of every email the app has tried to send - invites, expiry reminders, custom messages, and SMTP tests. Entries older than 90 days are removed automatically.") }}
+      </p>
+    </div>
+    <!-- Filters -->
+    <div class="flex flex-wrap gap-4">
+      <div>
+        <label for="sent_emails_status_filter"
+               class="block mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">{{ _("Status") }}</label>
+        <select id="sent_emails_status_filter"
+                name="status"
+                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary focus:border-primary block w-full sm:w-40 p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                hx-get="{{ url_for('settings.sent_emails_table') }}"
+                hx-trigger="change"
+                hx-target="#sent_emails_table"
+                hx-swap="outerHTML settle:0ms"
+                hx-include="#sent_emails_kind_filter">
+          <option value="">{{ _("All") }}</option>
+          <option value="sent">{{ _("Sent") }}</option>
+          <option value="failed">{{ _("Failed") }}</option>
+        </select>
+      </div>
+      <div>
+        <label for="sent_emails_kind_filter"
+               class="block mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">{{ _("Type") }}</label>
+        <select id="sent_emails_kind_filter"
+                name="kind"
+                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary focus:border-primary block w-full sm:w-40 p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                hx-get="{{ url_for('settings.sent_emails_table') }}"
+                hx-trigger="change"
+                hx-target="#sent_emails_table"
+                hx-swap="outerHTML settle:0ms"
+                hx-include="#sent_emails_status_filter">
+          <option value="">{{ _("All") }}</option>
+          <option value="invite">{{ _("Invite") }}</option>
+          <option value="reminder">{{ _("Reminder") }}</option>
+          <option value="custom">{{ _("Custom") }}</option>
+          <option value="test">{{ _("Test") }}</option>
+        </select>
+      </div>
+    </div>
+    <!-- Table (lazy-loaded) -->
+    <div hx-get="{{ url_for('settings.sent_emails_table') }}"
+         hx-trigger="load"
+         hx-target="#sent_emails_table"
+         hx-swap="outerHTML settle:0ms"
+         hx-include="#sent_emails_status_filter,#sent_emails_kind_filter">
+      <div id="sent_emails_table"
+           class="text-center py-8 text-gray-500 dark:text-gray-400">{{ _("Loading...") }}</div>
+    </div>
+  </div>
+</section>
