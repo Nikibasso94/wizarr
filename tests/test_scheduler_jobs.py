@@ -56,7 +56,7 @@ def test_jobs_have_sensible_first_run_times(app):
     assert jobs["check_expiring"]["next_run_time"] == now + timedelta(minutes=1)
     assert jobs["sync_ldap_users"]["next_run_time"] == now + timedelta(minutes=2)
     assert jobs["send_expiry_reminders"]["next_run_time"] == now + timedelta(minutes=3)
-    assert jobs["send_expiry_reminders"]["hours"] == 1
+    assert jobs["send_expiry_reminders"]["minutes"] == 15
     # The startup thread runs the first optimize, so the job waits one day.
     assert "next_run_time" not in jobs["sqlite_optimize"]
     assert jobs["sqlite_optimize"]["hours"] == 24

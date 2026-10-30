@@ -184,13 +184,15 @@ def register_scheduled_jobs(app, target_scheduler, now: datetime | None = None):
 
     # Always register the expiry reminder job. The job returns early when
     # SMTP/reminders are not enabled, so turning them on at runtime takes
-    # effect without a restart.
+    # effect without a restart. Same cadence as check_expiring, so a
+    # reminder can't lag more than 15 minutes behind the check that
+    # ultimately disables/deletes the expired account.
     target_scheduler.add_job(
         id="send_expiry_reminders",
         func=send_expiry_reminders,
         args=[app],
         trigger="interval",
-        hours=1,
+        minutes=15,
         next_run_time=now + timedelta(minutes=3),
         **JOB_OPTIONS,
     )
