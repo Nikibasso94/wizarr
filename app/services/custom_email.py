@@ -4,7 +4,7 @@ import markdown
 from flask import render_template
 
 from app.models import User
-from app.services.user_email import current_email
+from app.services.user_email import resolve_recipient_email
 
 _PLACEHOLDER_RE = re.compile(r"\{\{\s*(\w+)\s*\}\}")
 
@@ -17,7 +17,11 @@ def _resolve_username(user: User) -> str:
 
 _PLACEHOLDERS = {
     "username": _resolve_username,
-    "email": lambda user: current_email(user) or "",
+    # resolve_recipient_email(), not current_email(): the latter is scoped
+    # to Wizarr-editable (jellyfin/emby/no-server) accounts for the admin
+    # edit-email form and resolves to "" for Plex/Kavita/etc. accounts
+    # even when their address is populated.
+    "email": lambda user: resolve_recipient_email(user) or "",
 }
 
 
