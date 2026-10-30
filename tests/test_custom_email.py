@@ -61,6 +61,20 @@ def test_substitute_placeholders_replaces_known_tokens(session):
     assert result == "Hi bob, we sent this to bob@example.com"
 
 
+def test_substitute_placeholders_resolves_email_for_plex_user(session):
+    """Regression test: {{email}} must resolve for any server type, not
+    just jellyfin/emby/no-server accounts (the scope of current_email(),
+    which this placeholder used to call by mistake)."""
+    plex = _server(session, "Plex", server_type="plex")
+    user = _user(
+        session, username="carol", email="carol@example.com", server_id=plex.id
+    )
+
+    result = substitute_placeholders("{{email}}", user)
+
+    assert result == "carol@example.com"
+
+
 def test_substitute_placeholders_leaves_unknown_tokens(session):
     user = _user(session)
 
