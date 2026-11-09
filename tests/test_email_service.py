@@ -214,3 +214,70 @@ def test_reminder_services_defaults_to_blank(smtp_config, session):
         send_expiry_reminder_email(user, 1)
 
     assert "Services: " in send.call_args.args[2]
+
+
+# ─── send_test_reminder_email / send-test-reminder CLI ─────────────────────
+
+
+def test_test_reminder_uses_sample_user_and_smallest_threshold(smtp_config, session):
+    from app.services.email import send_test_reminder_email
+
+    smtp_config.reminder_schedule = "7,3,1"
+    smtp_config.reminder_subject = "{{days_left}} days, {{username}}"
+    smtp_config.reminder_body = "Mail: {{email}}"
+    session.commit()
+
+    with patch("app.services.email.send_email") as send:
+        send_test_reminder_email("me@example.com")
+
+    args, kwargs = send.call_args
+    assert args[0] == "me@example.com"
+    assert args[1] == "1 days, test-user"
+    assert "me@example.com" in args[2]
+    assert kwargs["kind"] == "test"
+    assert User.query.filter_by(username="test-user").count() == 0
+
+
+def test_test_reminder_respects_explicit_days_and_config(session):
+    from app.services.email import send_test_reminder_email
+
+    unsaved = SMTPConfiguration(
+        enabled=True,
+        host="smtp.example.com",
+        port=587,
+        encryption="none",
+        from_email="wizarr@example.com",
+        reminder_schedule="3",
+        reminder_subject="Unsaved {{days_left}}",
+        reminder_body="Body",
+    )
+
+    with patch("app.services.email.send_email") as send:
+        send_test_reminder_email("me@example.com", days_left=10, config=unsaved)
+
+    assert send.call_args.args[1] == "Unsaved 10"
+    assert send.call_args.kwargs["config"] is unsaved
+    assert SMTPConfiguration.query.count() == 0
+
+
+def test_cli_send_test_reminder(app, smtp_config):
+    with patch("app.services.email.send_email") as send:
+        result = app.test_cli_runner().invoke(
+            args=["send-test-reminder", "me@example.com", "--days", "5"]
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "Test reminder sent to me@example.com" in result.output
+    assert send.call_args.args[0] == "me@example.com"
+
+
+def test_cli_send_test_reminder_reports_failure(app, session):
+    result = app.test_cli_runner().invoke(args=["send-test-reminder", "me@example.com"])
+
+    assert result.exit_code != 0
+    assert "SMTP is not configured" in result.output
+
+    from app.models import EmailLog
+
+    EmailLog.query.delete()
+    session.commit()

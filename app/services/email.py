@@ -118,17 +118,25 @@ def send_invite_email(to_email: str, invite_link: str, invite_code: str) -> None
 
 
 def send_expiry_reminder_email(
-    user: User, days_left: int, *, to_email: str | None = None, services: str = ""
+    user: User,
+    days_left: int,
+    *,
+    to_email: str | None = None,
+    services: str = "",
+    config: SMTPConfiguration | None = None,
+    kind: str = "reminder",
 ) -> None:
     """Send one reminder, optionally combining several of the same person's
     accounts into one email. `to_email` overrides `user.email` - needed
     when `user` is just a representative picked from a group of accounts
     resolved to the same real address via identity linking. `services` is
     a pre-joined, human-readable list of the server names involved, for
-    the {{services}} placeholder in a custom reminder message.
+    the {{services}} placeholder in a custom reminder message. `config`
+    overrides the saved SMTP configuration (used to preview unsaved
+    settings).
     """
     to_email = to_email or user.email
-    config = _get_active_config()
+    config = config or _get_active_config()
     custom_subject = (config.reminder_subject or "").strip() if config else ""
     custom_body = (config.reminder_body or "").strip() if config else ""
 
@@ -150,7 +158,37 @@ def send_expiry_reminder_email(
             "email/expiry_reminder.txt", user=user, days_left=days_left
         )
 
-    send_email(to_email, subject, html, text, config=config, kind="reminder")
+    send_email(to_email, subject, html, text, config=config, kind=kind)
+
+
+def send_test_reminder_email(
+    to_email: str,
+    *,
+    days_left: int | None = None,
+    config: SMTPConfiguration | None = None,
+) -> None:
+    """Send the expiry reminder to an arbitrary address, filled with sample
+    data, so the admin can see how it looks. Uses the saved configuration
+    unless `config` is given. Raises EmailSendError on failure.
+    """
+    from app.models import MediaServer
+    from app.services.expiry import parse_reminder_schedule
+
+    config = config or _get_active_config()
+    if days_left is None:
+        thresholds = parse_reminder_schedule(config.reminder_schedule if config else "")
+        days_left = min(thresholds) if thresholds else 3
+
+    sample_user = User(username="test-user", email=to_email)
+    services = ", ".join(sorted(s.name for s in MediaServer.query.all() if s.name))
+    send_expiry_reminder_email(
+        sample_user,
+        days_left,
+        to_email=to_email,
+        services=services or "Media Server",
+        config=config,
+        kind="test",
+    )
 
 
 def send_test_email(to_email: str, config: SMTPConfiguration) -> None:

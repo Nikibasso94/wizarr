@@ -121,3 +121,29 @@ def test_get_prefills_custom_reminder_content(admin_client, session):
     assert resp.status_code == 200
     assert b"Custom subject" in resp.data
     assert b"Custom body text" in resp.data
+
+
+def test_test_reminder_button_uses_posted_unsaved_content(admin_client, session):
+    from unittest.mock import patch
+
+    data = _base_form(
+        reminder_schedule="7,2",
+        reminder_subject="Preview {{days_left}}",
+        reminder_body="Hello {{username}}",
+        test_recipient_email="me@example.com",
+    )
+    with patch("app.services.email.send_email") as send:
+        resp = admin_client.post("/settings/smtp/test-reminder", data=data)
+
+    assert resp.status_code == 200
+    assert b"Test reminder sent to me@example.com" in resp.data
+    assert send.call_args.args[0] == "me@example.com"
+    assert send.call_args.args[1] == "Preview 2"
+    assert SMTPConfiguration.query.first() is None
+
+
+def test_test_reminder_button_requires_recipient(admin_client, session):
+    resp = admin_client.post("/settings/smtp/test-reminder", data=_base_form())
+
+    assert resp.status_code == 200
+    assert b"Enter a recipient address" in resp.data
