@@ -82,6 +82,10 @@ def create_app(config_object=DevelopmentConfig):
     register_filters(app)
     app.before_request(require_onboarding)
 
+    from .cli import register_cli
+
+    register_cli(app)
+
     # Step 6: Initialize wizard steps
     if show_startup:
         logger.step("Setting up wizard steps", "🪄")
